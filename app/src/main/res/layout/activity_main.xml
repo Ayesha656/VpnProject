@@ -4,28 +4,51 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#2C2F48"
     tools:context=".MainActivity">
 
-    <Button
-        android:id="@+id/btn_upload_image"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="Upload Image"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toTopOf="@+id/btn_start_vpn"
-        app:layout_constraintStart_toStartOf="parent"
+    <TextView
+        android:id="@+id/tv_vpn"
+        android:layout_width="150dp"
+        android:layout_height="64dp"
+        android:layout_marginTop="112dp"
+        android:fontFamily="sans-serif-medium"
+        android:text="VPN"
+        android:textAlignment="center"
+        android:textColor="#A9FCAB"
+        android:textSize="32sp"
+        android:textStyle="bold"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintVertical_chainStyle="packed"
-        android:layout_margin="16dp"/>
+        app:layout_constraintHorizontal_bias="0.448"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <Button
         android:id="@+id/btn_start_vpn"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="Start VPN"
-        app:layout_constraintTop_toBottomOf="@+id/btn_upload_image"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
+        android:layout_width="150dp"
+        android:layout_height="150dp"
+        android:layout_marginTop="244dp"
+        android:background="@drawable/btn_start_background"
+        android:text="Start"
+        android:textColor="#2C2F48"
+        android:textSize="16sp"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_margin="16dp"/>
+        app:layout_constraintHorizontal_bias="0.498"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/btn_upload_image"
+        android:layout_width="184dp"
+        android:layout_height="55dp"
+        android:layout_marginTop="96dp"
+        android:background="@drawable/btn_default_background"
+        android:text="Upload Image"
+        android:textColor="#A9FCAB"
+        android:textSize="16sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.497"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btn_start_vpn" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
