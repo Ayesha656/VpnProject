@@ -1,104 +1,166 @@
 package com.example.vpn_sample_2;
+
+import android.app.PendingIntent;
 import android.content.Intent;
 import android.net.VpnService;
-import android.os.AsyncTask;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
+import android.widget.Toast;
 
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.DatagramChannel;
 import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-public class MyVpnService extends VpnService{
+public class MyVpnService extends VpnService {
+
     private static final String TAG = "MyVpnService";
-    private ParcelFileDescriptor vpnInterface = null;
-
-    @Override
-    public void onCreate() {
-        super.onCreate();
-        Log.d(TAG, "VPN Service Created");
-    }
+    private ParcelFileDescriptor vpnInterface;
+    private static final List<String> IMAGE_EXTENSIONS = Arrays.asList(".jpg", ".jpeg", ".png", ".gif", ".bmp");
+    private final AtomicBoolean isRunning = new AtomicBoolean(false);
+    private String serverIp = "192.168.2.2";  // Example IP, replace with actual server IP
+    private int servicePortNumber = 8080;  // Example port, replace with actual port number
+    private Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.d(TAG, "VPN Service Started");
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    setupVpn();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }).start();
+        if (intent != null) {
+            Thread vpnThread = new Thread(this::runVpnConnection);
+            vpnThread.start();
+        }
         return START_STICKY;
     }
 
-    private void setupVpn() throws IOException {
-        Builder builder = new Builder();
-        builder.setSession("MyVPNService")
-                .addAddress("10.0.0.2", 24)
-                .addRoute("0.0.0.0", 0);
-
-        vpnInterface = builder.establish();
-
-        Log.d(TAG, "VPN Interface Established");
-
-        DatagramChannel tunnel = DatagramChannel.open();
-        tunnel.connect(new InetSocketAddress("10.0.0.2", 8087));
-
-        ByteBuffer packet = ByteBuffer.allocate(32767);
-        FileInputStream in = new FileInputStream(vpnInterface.getFileDescriptor());
-        while (true) {
-            int length = in.read(packet.array());
-            if (length > 0) {
-                packet.limit(length);
-                // Parse the packet and Add the  filtering logic
+    private void runVpnConnection() {
+        try {
+            if (establishVpnConnection()) {
+                Log.i(TAG, "VPN interface established successfully.");
+                isRunning.set(true);
+                interceptPackets();
             }
-            packet.clear();
+        } catch (Exception e) {
+            Log.e(TAG, "Error during VPN connection: " + e.getMessage(), e);
+        } finally {
+            stopVpnConnection();
         }
     }
 
-    private boolean isImageUrl(String url) {
-        String[] extensions = {".jpg", ".png"};
-        for (String extension : extensions) {
-            if (url.endsWith(extension)) {
-                return true;
+    private boolean establishVpnConnection() {
+        if (vpnInterface == null) {
+            Builder builder = new Builder();
+            try {
+                builder.addAddress(serverIp, 24)
+                        .addRoute("0.0.0.0", 0)
+                        .addDnsServer("192.168.1.1");
+
+                PendingIntent configureIntent = PendingIntent.getActivity(this, 0,
+                        new Intent(this, MainActivity.class),
+                        PendingIntent.FLAG_IMMUTABLE);
+
+                vpnInterface = builder.setSession("MyVPN")
+                        .setConfigureIntent(configureIntent)
+                        .establish();
+
+                return vpnInterface != null;
+
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to establish VPN interface: " + e.getMessage(), e);
+            }
+        } else {
+            handler.post(() -> Toast.makeText(MyVpnService.this, "VPN connection already established", Toast.LENGTH_SHORT).show());
+        }
+        return false;
+    }
+
+    private void stopVpnConnection() {
+        if (vpnInterface != null) {
+            try {
+                vpnInterface.close();
+                vpnInterface = null;
+                isRunning.set(false);
+                Log.i(TAG, "VPN interface closed.");
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to close VPN interface: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    private void interceptPackets() {
+        if (vpnInterface == null) {
+            Log.e(TAG, "VPN interface is null. Cannot intercept packets.");
+            return;
+        }
+
+        try (FileInputStream in = new FileInputStream(vpnInterface.getFileDescriptor());
+             FileOutputStream out = new FileOutputStream(vpnInterface.getFileDescriptor())) {
+
+            ByteBuffer packet = ByteBuffer.allocate(32767);
+            while (isRunning.get()) {
+                int length = in.read(packet.array());
+                if (length > 0) {
+                    packet.limit(length);
+
+                    // Example: Process packets (if needed)
+                    if (isHttpPacket(packet)) {
+                        String httpPayload = extractHttpPayload(packet);
+                        if (httpPayload != null && isImageRequest(httpPayload, IMAGE_EXTENSIONS)) {
+                            Log.i(TAG, "Filtered Image Request: " + httpPayload);
+                            // Handle the image request here (e.g., block, modify)
+                        }
+                    }
+
+                    // Send the packet back
+                    out.write(packet.array(), 0, length);
+                    packet.clear();
+                }
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Error in interceptPackets: " + e.getMessage(), e);
+        }
+    }
+
+    private boolean isHttpPacket(ByteBuffer packet) {
+        // Check if the packet contains an HTTP request
+        String payload = new String(packet.array(), 0, packet.limit());
+        return payload.startsWith("GET") || payload.startsWith("POST") ||
+                payload.startsWith("PUT") || payload.startsWith("DELETE");
+    }
+
+    private String extractHttpPayload(ByteBuffer packet) {
+        // Extract the HTTP payload from the packet
+        String payload = new String(packet.array(), 0, packet.limit());
+        if (payload.contains("HTTP/")) {
+            int endOfHeaders = payload.indexOf("\r\n\r\n");
+            if (endOfHeaders != -1) {
+                return payload.substring(0, endOfHeaders + 4); // Include end of headers
+            }
+        }
+        return null;
+    }
+
+    private boolean isImageRequest(String httpPayload, List<String> imageExtensions) {
+        // Check if the HTTP request URL ends with one of the specified image extensions
+        int start = httpPayload.indexOf(" ");
+        int end = httpPayload.indexOf(" ", start + 1);
+        if (start != -1 && end != -1) {
+            String url = httpPayload.substring(start + 1, end);
+            for (String extension : imageExtensions) {
+                if (url.contains(extension)) {
+                    return true;
+                }
             }
         }
         return false;
     }
 
-    private void communicateWithBackend(final String url) {
-        new AsyncTask<Void, Void, Boolean>() {
-            @Override
-            protected Boolean doInBackground(Void... voids) {
-                // Make network request to backend server
-                // For example, using HttpURLConnection or any networking library
-                return true; // Assume URL validation successful
-            }
-
-            @Override
-            protected void onPostExecute(Boolean result) {
-                // Handle result of URL validation
-            }
-        }.execute();
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        stopVpnConnection();
     }
-
-    public void startVpn(String[] imageExtensions, String[] packageNames, android.os.Handler.Callback callback) {
-        Intent intent = new Intent(this, MyVpnService.class);
-        startService(intent);
-        Log.d(TAG, "VPN Service Started with imageExtensions: " + Arrays.toString(imageExtensions) + " and packageNames: " + Arrays.toString(packageNames));
-    }
-
-    public void stopVpn() {
-        Intent intent = new Intent(this, MyVpnService.class);
-        stopService(intent);
-        Log.d(TAG, "VPN Service Stopped");
-    }
-
 }
